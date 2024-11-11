@@ -8,8 +8,7 @@ namespace WinCC_Assistant
         [STAThread]
         static void Main()
         {
-            bool isNewInstance;
-            using (var mutex = new System.Threading.Mutex(true, "WinCC_Assistant", out isNewInstance))
+            using (var mutex = new System.Threading.Mutex(true, "WinCC_Assistant", out bool isNewInstance))
             {
                 if (!isNewInstance)
                 {
