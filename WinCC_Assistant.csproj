@@ -113,6 +113,15 @@
     </BootstrapperPackage>
   </ItemGroup>
   <ItemGroup>
+    <COMReference Include="CCWSTLib">
+      <Guid>{57FD6F12-08B3-4AB6-B36E-9B779C5B1E92}</Guid>
+      <VersionMajor>1</VersionMajor>
+      <VersionMinor>0</VersionMinor>
+      <Lcid>0</Lcid>
+      <WrapperTool>tlbimp</WrapperTool>
+      <Isolated>False</Isolated>
+      <EmbedInteropTypes>True</EmbedInteropTypes>
+    </COMReference>
     <COMReference Include="MMC20">
       <Guid>{8E80422B-CAC4-472B-B272-9635F1DFEF3B}</Guid>
       <VersionMajor>1</VersionMajor>

@@ -1,4 +1,5 @@
-﻿using System;
+﻿using CCWSTLib;
+using System;
 using System.Diagnostics;
 using System.Drawing;
 using System.Management;
@@ -15,7 +16,10 @@ namespace WinCC_Assistant
         private NotifyIcon trayIcon;  // 系统托盘图标
         private ContextMenu trayMenu;  // 托盘图标右键菜单
         private IntPtr winEventHook;  // 用于监听窗口事件的钩子
-        private ManagementEventWatcher stopWatcher;  // 用于监控进程停止事件
+        private ManagementEventWatcher PdlRtStopWatcher;  // 用于监控进程停止事件
+        private ManagementEventWatcher GscrtStopWatcher;  // 用于监控进程停止事件
+
+        private static CWinCCStart WinCC; // WinCC 对象
 
         // WinEventDelegate 委托，定义了当窗口事件发生时的回调函数
         private delegate void WinEventDelegate(IntPtr hWinEventHook, uint eventType, IntPtr hwnd, int idObject, int idChild, uint dwEventThread, uint dwmsEventTime);
@@ -31,9 +35,11 @@ namespace WinCC_Assistant
         // 进程相关常量
         private const string PdlRtProcessName = "PdlRt";  // 需要监控的 PdlRt 进程名称
         private const string GscrtProcessName = "gscrt";  // 需要监控的 Gscrt 进程名称
+        private const string PdlRtPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\PdlRt.exe";  // PdlRt 进程的路径
         private const string GscrtPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\gscrt.exe";  // Gscrt 进程的路径
+        private const string ResetWinCCPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\Reset_WinCC.vbs";  // Reset_WinCC 进程的路径
 
-        private const int RetryDelayMilliseconds = 2000;  // 重试间隔（毫秒）
+        private const int RetryDelayMilliseconds = 5000;  // 重试间隔（毫秒）
 
         // 图标
         private static readonly Icon appIcon = new Icon(Assembly.GetExecutingAssembly().GetManifestResourceStream("WinCC_Assistant.icon.ico"));
@@ -72,7 +78,9 @@ namespace WinCC_Assistant
         private void InitializeTrayIcon()
         {
             trayMenu = new ContextMenu();
-            trayMenu.MenuItems.Add("Designed by Amaury");  // 菜单项：设计者信息
+            trayMenu.MenuItems.Add("Designed by Amaury");
+            trayMenu.MenuItems.Add("-");  // 分隔线
+            trayMenu.MenuItems.Add("Reset WinCC", async (sender, e) => await ResetWinCC());  // 菜单项：重置WinCC
             trayMenu.MenuItems.Add("-");  // 分隔线
             trayMenu.MenuItems.Add("Exit", OnExit);  // 菜单项：退出
 
@@ -100,7 +108,7 @@ namespace WinCC_Assistant
             if (e.Button == MouseButtons.Left)
             {
                 ShowBalloonNotification("1. Automatically close the WinCC Information pop-up window\n" +
-                            "2. Monitor and guard WinCC scheduled tasks processes");  // 显示气泡通知
+                            "2. Monitor and guard WinCC processes");  // 显示气泡通知
             }
         }
 
@@ -153,57 +161,61 @@ namespace WinCC_Assistant
             }
         }
 
-        // 初始化进程监控，监控 Gscrt 进程的启动和停止
+        // 初始化进程监控，监控进程的停止
         private void InitializeProcessWatcher()
         {
-            WqlEventQuery stopQuery = new WqlEventQuery($"SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Process' AND TargetInstance.Name = '{GscrtProcessName}.exe'");
+            // 初始化 WinCC 对象
+            WinCC = new CWinCCStart();
 
-            stopWatcher = new ManagementEventWatcher(stopQuery);
-            stopWatcher.EventArrived += new EventArrivedEventHandler(OnProcessStop);  // 事件到达时触发
-            stopWatcher.Start();  // 启动监视器
+            WqlEventQuery PdlRtStopQuery = new WqlEventQuery($"SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Process' AND TargetInstance.Name = '{PdlRtProcessName}.exe'");
+            WqlEventQuery GscrtStopQuery = new WqlEventQuery($"SELECT * FROM __InstanceDeletionEvent WITHIN 1 WHERE TargetInstance ISA 'Win32_Process' AND TargetInstance.Name = '{GscrtProcessName}.exe'");
+
+            PdlRtStopWatcher = new ManagementEventWatcher(PdlRtStopQuery);
+            PdlRtStopWatcher.EventArrived += async (sender, e) => await OnProcessStop(PdlRtPath);
+            PdlRtStopWatcher.Start();  // 启动监视器
+
+            GscrtStopWatcher = new ManagementEventWatcher(GscrtStopQuery);
+            GscrtStopWatcher.EventArrived += async (sender, e) => await OnProcessStop(GscrtPath);
+            GscrtStopWatcher.Start();  // 启动监视器
         }
 
-        // 当检测到 Gscrt 进程终止时，检查 PdlRt 是否仍在运行，若在则重启 Gscrt
-        private async void OnProcessStop(object sender, EventArrivedEventArgs e)
+        // 当检测到目标进程终止时，检查项目状态并重启进程
+        private async Task OnProcessStop(string processPath)
         {
-            if (CheckProcessExists(PdlRtProcessName))  // 检查 PdlRt 进程是否存在
+            // 获取当前项目状态
+            WinCC.GetProjectStatus(out _project_status status, out string _);
+
+            // 检查项目状态是否为 PROJECT_STATUS_ACTIVATE_END
+            if (status == _project_status.PROJECT_STATUS_ACTIVATE_END)
             {
-                await TryStartProcessWithRetry(GscrtPath);  // 重试启动 Gscrt 进程
+                await StartProcess(processPath); // 启动目标进程
             }
-        }
-
-        // 检查进程是否存在
-        private bool CheckProcessExists(string processName)
-        {
-            return Process.GetProcessesByName(processName).Length > 0;  // 获取进程列表并检查是否存在指定进程
         }
 
         // 启动指定路径的进程，并无限重试
-        private async Task TryStartProcessWithRetry(string path)
+        private async Task StartProcess(string path)
         {
-            bool success = false;
-
-            while (!success)
+            try
             {
-                try
-                {
-                    Process.Start(path);  // 启动进程
-                    success = true;  // 启动成功
-                }
-                catch (Exception)
-                {
-                    // 启动失败，继续重试
-                    await Task.Delay(RetryDelayMilliseconds);  // 等待一段时间再重试
-                }
+                Process.Start(path);  // 启动进程
             }
-
-            // 一旦成功启动进程，可以在此处添加成功提示或其他操作
+            catch (Exception)
+            {
+                // 启动失败，继续重试
+                await Task.Delay(RetryDelayMilliseconds);  // 等待一段时间再重试
+            }
         }
 
+        // 调用WinCC Reset脚本
+        private async Task ResetWinCC()
+        {
+            await StartProcess(ResetWinCCPath); // 启动目标进程
+        }
         // 退出应用程序
         private void OnExit(object sender, EventArgs e)
         {
-            stopWatcher?.Stop();  // 停止监视器
+            PdlRtStopWatcher?.Stop();  // 停止监视器
+            GscrtStopWatcher?.Stop();  // 停止监视器
             UnhookWinEvent(winEventHook);  // 注销钩子
             trayIcon.Visible = false;  // 隐藏托盘图标
             Application.Exit();  // 退出应用程序
