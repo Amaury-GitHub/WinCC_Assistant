@@ -1,7 +1,5 @@
 # AutoClose WinCC Info & TaskDaemon
 
-更新版本, 重构了代码, 关闭弹窗更快, 更节省资源</br>
-
 当你没有授权,没有狗,Wincc会定期弹窗</br>
 
   
@@ -12,9 +10,10 @@
 
 更新一个功能: 自动守护计划任务的进程</br>
 
-自动检测PdlRt进程(画面)是否存在, 如果存在再检测gscrt进程(计划任务)是否存在</br>
 
-如果不存在自动运行"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\gscrt.exe"</br>
+自动守护PdlRt进程(画面)与gscrt进程(计划任务)</br>
+
+读取WinCC RT的状态, 确认启动后检测到进程异常关闭自动重新启动</br>
 
 有需要的自取</br>
 
