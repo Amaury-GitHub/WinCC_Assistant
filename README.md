@@ -1,6 +1,6 @@
 # AutoClose WinCC Info & TaskDaemon
 
-更新版本, 重构了代码, 使用更优秀的方法</br>
+更新版本, 重构了代码, 关闭弹窗更快, 更节省资源</br>
 
 当你没有授权,没有狗,Wincc会定期弹窗</br>
 
