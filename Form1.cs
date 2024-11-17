@@ -37,7 +37,7 @@ namespace WinCC_Assistant
         private const string GscrtProcessName = "gscrt";  // 需要监控的 Gscrt 进程名称
         private const string PdlRtPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\PdlRt.exe";  // PdlRt 进程的路径
         private const string GscrtPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\gscrt.exe";  // Gscrt 进程的路径
-        private const string ResetWinCCPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\Reset_WinCC.vbs";  // Reset_WinCC 进程的路径
+        private const string ResetWinCCPath = @"C:\Program Files (x86)\Siemens\Automation\SCADA-RT_V11\WinCC\bin\Reset_WinCC.vbs";  // Reset_WinCC 脚本的路径
 
         private const int RetryDelayMilliseconds = 5000;  // 重试间隔（毫秒）
 
@@ -214,11 +214,47 @@ namespace WinCC_Assistant
         // 退出应用程序
         private void OnExit(object sender, EventArgs e)
         {
-            PdlRtStopWatcher?.Stop();  // 停止监视器
-            GscrtStopWatcher?.Stop();  // 停止监视器
-            UnhookWinEvent(winEventHook);  // 注销钩子
-            trayIcon.Visible = false;  // 隐藏托盘图标
-            Application.Exit();  // 退出应用程序
+            try
+            {
+                // 停止并释放监视器
+                if (PdlRtStopWatcher != null)
+                {
+                    PdlRtStopWatcher.Stop();
+                    PdlRtStopWatcher.Dispose();
+                    PdlRtStopWatcher = null;
+                }
+
+                if (GscrtStopWatcher != null)
+                {
+                    GscrtStopWatcher.Stop();
+                    GscrtStopWatcher.Dispose();
+                    GscrtStopWatcher = null;
+                }
+
+                // 注销 WinEvent 钩子
+                if (winEventHook != IntPtr.Zero)
+                {
+                    UnhookWinEvent(winEventHook);
+                    winEventHook = IntPtr.Zero;
+                }
+
+                // 释放托盘图标
+                if (trayIcon != null)
+                {
+                    trayIcon.Visible = false;
+                    trayIcon.Dispose();
+                    trayIcon = null;
+                }
+            }
+            catch (Exception)
+            {
+
+            }
+            finally
+            {
+                // 确保应用程序退出
+                Application.Exit();
+            }
         }
 
         // 窗体加载时自动隐藏
